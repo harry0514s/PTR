@@ -8,6 +8,8 @@
 
     <!-- TODO: Update blank fragment layout -->
 
+
+
     <TextView
         android:id="@+id/tvName"
         android:layout_width="match_parent"
@@ -21,7 +23,15 @@
         android:layout_height="match_parent"
         android:drawSelectorOnTop="true"
         android:scrollbars="none"
-        android:layout_alignParentTop="true"
-        android:layout_alignParentLeft="true" />
+        android:layout_alignParentStart="true"
+        android:layout_alignBottom="@+id/imageView" />
+
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:id="@+id/imageView"
+        android:src="@drawable/favorite"
+        android:layout_gravity="center_horizontal"
+        android:layout_weight="0.51" />
 
 </RelativeLayout>

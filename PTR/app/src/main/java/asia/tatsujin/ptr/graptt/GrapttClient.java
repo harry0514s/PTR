@@ -1,7 +1,10 @@
 package asia.tatsujin.ptr.graptt;
 
 import android.content.Context;
+import android.net.Uri;
 
+import com.activeandroid.query.Delete;
+import com.activeandroid.query.Select;
 import com.android.volley.DefaultRetryPolicy;
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
@@ -13,12 +16,15 @@ import com.google.gson.Gson;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import asia.tatsujin.ptr.graptt.data.Response;
 import asia.tatsujin.ptr.models.Board;
 import asia.tatsujin.ptr.models.Post;
+import asia.tatsujin.ptr.models.Push;
 
 /**
  * Created by tatsujin on 2016/3/28.
@@ -45,32 +51,62 @@ public class GrapttClient {
     }
 
     public interface OnGetFavoriteListener {
-        void onGet(Board[] boards);
+        void onGet(List<Board> boards);
         void onError(String message);
     }
 
     public interface OnEnterBoardListener {
-        void onEnter(String status);
+        void onEnter(String status, String name);
         void onError(String message);
     }
 
     public interface OnGetPostsListener {
-        void onGet(Post[] posts);
+        void onGet(List<Post> posts);
         void onError(String message);
     }
 
-    public interface OnResponseListener {
+    public interface OnGetPostListener {
+        void onGet(Post post);
+        void onError(String message);
+    }
+
+    public interface OnCreatePostListener {
+        void onPost(String status);
+        void onError(String message);
+    }
+
+    public interface OnPushListener {
+        void onPush(String status);
+        void onError(String message);
+    }
+
+    private interface OnResponseListener {
         void onResponse(Response response);
         void onError(String message);
     }
 
+    public static class PushTag {
+        public static final int PUSH = 1;
+        public static final int BOO = 2;
+        public static final int ARROW = 3;
+    }
+
+    private static final int POST_MAX_CACHE_NUM = 20;
     private String baseURL;
     private RequestQueue requestQueue;
     private String token;
+    private Gson gson;
+    private Post post;
 
     public GrapttClient(Context context, String baseURL, OnConnectListener onConnectListener) {
         this.baseURL = baseURL;
         requestQueue = Volley.newRequestQueue(context);
+        postConnection(onConnectListener);
+        gson = new Gson();
+    }
+
+    public void reconnect(final OnConnectListener onConnectListener) {
+        close(null);
         postConnection(onConnectListener);
     }
 
@@ -141,7 +177,7 @@ public class GrapttClient {
         put("/connection/" + token + "/board/" + name, null, new OnResponseListener() {
             @Override
             public void onResponse(Response response) {
-                onEnterBoardListener.onEnter(response.status);
+                onEnterBoardListener.onEnter(response.status, response.name);
             }
 
             @Override
@@ -163,6 +199,110 @@ public class GrapttClient {
                 onGetPostsListener.onError(message);
             }
         });
+    }
+
+    public void getPost(String id, final OnGetPostListener onGetPostListener) {
+        final boolean isNewPost = id != null;
+        if (id == null) {
+            id = "nil";
+        }
+        else if (id.isEmpty())
+            onGetPostListener.onError("Not Found");
+        else
+            id = Uri.encode(id);
+        get("/connection/" + token + "/post/" + id, new OnResponseListener() {
+            @Override
+            public void onResponse(Response response) {
+                cachePost(response.post, isNewPost);
+                List<Object> content = new ArrayList<>();
+                for (Object line : response.post.content) {
+                    if (!line.getClass().equals(String.class))
+                        line = gson.fromJson(gson.toJson(line), Push.class);
+                    content.add(line);
+                }
+                response.post.content = content;
+                onGetPostListener.onGet(response.post);
+            }
+
+            @Override
+            public void onError(String message) {
+                onGetPostListener.onError(message);
+            }
+        });
+    }
+
+    public List<Post> getCachedPosts() {
+        List<Post> posts = new Select().from(Post.class).execute();
+        for (Post post : posts) {
+            post.content = new ArrayList<>();
+            for (String line: post.text.split("\n")) {
+                if (line.startsWith("{\"tag\":\""))
+                    post.content.add(gson.fromJson(line, Push.class));
+                else
+                    post.content.add(line);
+            }
+        }
+        return posts;
+    }
+
+    public void createPost(String title, String content, final OnCreatePostListener onCreatePostListener) {
+        Map<String, String> params = new HashMap<>();
+        params.put("title", title);
+        params.put("content", content);
+        post("/connection/" + token + "/post", params, new OnResponseListener() {
+            @Override
+            public void onResponse(Response response) {
+                onCreatePostListener.onPost(response.status);
+            }
+
+            @Override
+            public void onError(String message) {
+                onCreatePostListener.onError(message);
+            }
+        });
+    }
+
+    public void push(String id, int tag, String content, final OnPushListener onPushListener) {
+        if (id == null)
+            id = "nil";
+        else if (id.isEmpty())
+            onPushListener.onError("Not Found");
+        else
+            id = Uri.encode(id);
+        Map<String, String> params = new HashMap<>();
+        params.put("tag", String.valueOf(tag));
+        params.put("content", content);
+        post("/connection/" + token + "/post/" + id + "/push", params, new OnResponseListener() {
+            @Override
+            public void onResponse(Response response) {
+                onPushListener.onPush(response.status);
+            }
+
+            @Override
+            public void onError(String message) {
+                onPushListener.onError(message);
+            }
+        });
+    }
+
+    private void cachePost(Post post, boolean isNewPost) {
+        if (isNewPost) {
+            this.post = post;
+            Post oldPost = new Select().from(Post.class).where("id = ?", post.id).executeSingle();
+            if (oldPost != null)
+                oldPost.delete();
+            else
+                while (new Select().from(Post.class).count() >= POST_MAX_CACHE_NUM)
+                    new Delete().from(Post.class).executeSingle();
+            post.text = "";
+        }
+        for (Object line : post.content) {
+            if (line.getClass().equals(String.class))
+                this.post.text += line + "\n";
+            else
+                this.post.text += gson.toJson(line) + "\n";
+        }
+        this.post.save();
     }
 
     private void postConnection(final OnConnectListener onConnectListener) {
@@ -203,7 +343,7 @@ public class GrapttClient {
                 new com.android.volley.Response.Listener<String>() {
                     @Override
                     public void onResponse(String res) {
-                        Response response = new Gson().fromJson(res, Response.class);
+                        Response response = gson.fromJson(res, Response.class);
                         onResponseListener.onResponse(response);
                     }
                 },
@@ -219,6 +359,7 @@ public class GrapttClient {
                                 e.printStackTrace();
                             }
                         }
+                        onResponseListener.onError(error.getMessage());
                     }
                 }
         ) {
@@ -226,6 +367,6 @@ public class GrapttClient {
             public Map<String, String> getParams() {
                 return params;
             }
-        }.setRetryPolicy(new DefaultRetryPolicy(10000, 0, DefaultRetryPolicy.DEFAULT_BACKOFF_MULT)));
+        }.setRetryPolicy(new DefaultRetryPolicy(20000, 0, DefaultRetryPolicy.DEFAULT_BACKOFF_MULT)));
     }
 }

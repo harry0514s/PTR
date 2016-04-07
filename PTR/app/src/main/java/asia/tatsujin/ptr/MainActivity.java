@@ -7,7 +7,6 @@ import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.Toast;
 
 import com.activeandroid.ActiveAndroid;
 
@@ -17,29 +16,22 @@ public class MainActivity extends AppCompatActivity {
 
     public static GrapttClient grapttClient;
 
-    public static android.support.v4.app.FragmentTransaction fragmentTransaction;
-    public static android.support.v4.app.FragmentManager fragmentManager;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-
-        fragmentManager = getSupportFragmentManager();
-
-
-
         if (BuildConfig.DEBUG)
             ActiveAndroid.setLoggingEnabled(true);
         grapttClient = new GrapttClient(this, getString(R.string.api_url), new GrapttClient.OnConnectListener() {
             @Override
             public void onConnect(String status) {
-                Log.d("G_G", status);
+                Log.d("GrapttClient", status);
             }
             @Override
             public void onError(String message) {
-                Toast.makeText(MainActivity.this, "Error: " + message, Toast.LENGTH_SHORT).show();
+                Log.d("GrapttClient", message);
             }
         });
     }
@@ -49,7 +41,7 @@ public class MainActivity extends AppCompatActivity {
         grapttClient.close(new GrapttClient.OnDisconnectListener() {
             @Override
             public void onDisconnect() {
-                Log.d("G_G", "Disconnected");
+                Log.d("GrapttClient", "Disconnected");
             }
         });
         super.onDestroy();

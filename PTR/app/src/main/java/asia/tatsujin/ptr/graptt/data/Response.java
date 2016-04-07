@@ -1,5 +1,7 @@
 package asia.tatsujin.ptr.graptt.data;
 
+import java.util.List;
+
 import asia.tatsujin.ptr.models.Board;
 import asia.tatsujin.ptr.models.Post;
 
@@ -9,6 +11,8 @@ import asia.tatsujin.ptr.models.Post;
 public class Response {
     public String status;
     public String token;
-    public Board[] boards;
-    public Post[] posts;
+    public String name;
+    public List<Board> boards;
+    public List<Post> posts;
+    public Post post;
 }
